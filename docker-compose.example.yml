@@ -6,13 +6,17 @@ services:
     restart: unless-stopped
     environment:
       N8N_DRAFT_WEBHOOK_URL: ${N8N_DRAFT_WEBHOOK_URL:-}
+      PUBLISH_WORKER_URL: ${PUBLISH_WORKER_URL:-}
       N8N_PUBLISH_WEBHOOK_URL: ${N8N_PUBLISH_WEBHOOK_URL:-}
       N8N_WEBHOOK_SECRET: ${N8N_WEBHOOK_SECRET:-}
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-https://listing-manager.srv1581423.hstgr.cloud}
+      SELLER_POSTCODE: ${SELLER_POSTCODE:-DA3 7PS}
     volumes:
       - listing_manager_data:/app/data
     networks:
       - default
       - proxy
+      - n8n_net
     healthcheck:
       test:
         [
@@ -44,3 +48,6 @@ volumes:
 networks:
   proxy:
     external: true
+  n8n_net:
+    external: true
+    name: n8n-with-ai-assistant-mqko_default

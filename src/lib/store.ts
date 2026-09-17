@@ -77,6 +77,7 @@ export function updateListing(
       | "vinted"
       | "error"
       | "publishedAt"
+      | "publishUrls"
     >
   >
 ): Listing | null {

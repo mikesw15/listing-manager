@@ -24,6 +24,11 @@ export type Listing = {
   createdAt: string;
   updatedAt: string;
   publishedAt: string | null;
+  /** Live listing URLs returned by the publish worker (optional). */
+  publishUrls?: {
+    facebook?: string | null;
+    vinted?: string | null;
+  } | null;
 };
 
 export type DraftResultPayload = {

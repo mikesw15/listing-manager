@@ -1,6 +1,6 @@
 # Listing Manager
 
-Mobile-first web app for UK sellers: upload item photos, get **n8n-generated drafts** for **Facebook Marketplace** and **Vinted**, edit/approve, then fire a **publish webhook**.
+Mobile-first web app for UK sellers: upload item photos, get **AI/vision drafts** for **Facebook Marketplace** and **Vinted**, edit/approve, then publish via the **Playwright listing-publish worker** (or a legacy n8n webhook).
 
 Stack: **Next.js App Router**, TypeScript, Tailwind CSS. Listings + photos persist in a local JSON/file store under `data/`.
 
@@ -26,13 +26,18 @@ npm start
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `N8N_DRAFT_WEBHOOK_URL` | No* | Multipart POST target to generate drafts |
-| `N8N_PUBLISH_WEBHOOK_URL` | No* | JSON POST target when user approves |
+| `N8N_DRAFT_WEBHOOK_URL` | No* | Multipart POST target to generate drafts (vision sidecar or n8n) |
+| `PUBLISH_WORKER_URL` | No* | Playwright worker `POST /publish` (preferred), e.g. `http://listing-publish:8092/publish` |
+| `N8N_PUBLISH_WEBHOOK_URL` | No* | Legacy n8n publish webhook if worker URL unset |
+| `PUBLIC_APP_URL` | Recommended | Public app origin for absolute photo URLs sent to the worker |
+| `SELLER_POSTCODE` | No | Default `DA3 7PS` |
 | `N8N_WEBHOOK_SECRET` | No | Shared secret (`X-Webhook-Secret` header) |
 
-\*If either draft or publish URL is missing, the app runs in **demo mode**: submit returns mock Facebook + Vinted drafts and approve marks the listing published without calling n8n.
+\*If draft URL **or** publish target (`PUBLISH_WORKER_URL` / `N8N_PUBLISH_WEBHOOK_URL`) is missing, the app runs in **demo mode**.
 
-Copy `.env.example` → `.env.local` and fill in values for your n8n instance.
+### Browser publish worker
+
+Approve/publish calls `PUBLISH_WORKER_URL` (see sibling repo / folder `listing-publish`). First-time Facebook + Vinted login is documented in that service's README (persistent browser profile; no passwords in git).
 
 ## App flows
 
@@ -119,42 +124,30 @@ On HTTP error, the listing is marked `failed` with the error message.
 
 While `draft_pending`, the review page polls every ~2.5s for updates.
 
-### 3. Publish webhook (app → n8n)
+### 3. Publish (app → listing-publish worker, preferred)
 
 Fired only after the seller taps **Approve & publish**.
 
-**Outbound:** `POST {N8N_PUBLISH_WEBHOOK_URL}`  
-**Content-Type:** `application/json`  
-**Headers:** `X-Webhook-Secret: {N8N_WEBHOOK_SECRET}` (if secret set)
+**Outbound:** `POST {PUBLISH_WORKER_URL}` (falls back to `N8N_PUBLISH_WEBHOOK_URL`)  
+**Content-Type:** `application/json`
+
+When using the worker:
 
 ```json
 {
   "listingId": "uuid-here",
-  "notes": "optional seller notes",
-  "photos": ["1710000000-abc123-photo.jpg"],
-  "facebook": {
-    "title": "...",
-    "description": "...",
-    "category": "...",
-    "price": 45,
-    "condition": "...",
-    "currency": "GBP"
-  },
-  "vinted": {
-    "title": "...",
-    "description": "...",
-    "category": "...",
-    "price": 42,
-    "condition": "...",
-    "currency": "GBP"
-  }
+  "platforms": ["facebook", "vinted"],
+  "photos": ["https://listing-manager.../api/photos/file.jpg"],
+  "postcode": "DA3 7PS",
+  "facebook": { "title": "...", "description": "...", "category": "...", "price": 45, "condition": "...", "currency": "GBP" },
+  "vinted": { "title": "...", "description": "...", "category": "...", "price": 42, "condition": "...", "currency": "GBP" }
 }
 ```
 
-- **2xx** → listing status `published`
-- **non-2xx** → status `failed` with response body snippet as error
+- **2xx** → listing status `published` (URLs stored on `publishUrls` when returned)
+- **non-2xx / partial** → status `failed` with worker error code (`login_required`, `captcha`, `timeout`, `partial`)
 
-Photo files are stored under `data/uploads/`; the app serves them at `/api/photos/{filename}`. Your n8n workflow can download them from the deployed app URL if needed, or rely on the multipart files from the draft step.
+Photo files live under `data/uploads/` and are served at `/api/photos/{filename}`.
 
 ## API overview
 

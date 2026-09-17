@@ -41,9 +41,16 @@ export async function POST(req: Request, ctx: Ctx) {
       const failed = updateListing(id, {
         status: "failed",
         error: result.error,
+        publishUrls: result.urls ?? listing.publishUrls ?? null,
       });
       return NextResponse.json(
-        { listing: failed, demo: result.demo, error: result.error },
+        {
+          listing: failed,
+          demo: result.demo,
+          error: result.error,
+          code: result.code ?? null,
+          urls: result.urls ?? null,
+        },
         { status: 502 }
       );
     }
@@ -52,9 +59,14 @@ export async function POST(req: Request, ctx: Ctx) {
       status: "published",
       error: null,
       publishedAt: new Date().toISOString(),
+      publishUrls: result.urls ?? null,
     });
 
-    return NextResponse.json({ listing: published, demo: result.demo });
+    return NextResponse.json({
+      listing: published,
+      demo: result.demo,
+      urls: result.urls ?? null,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Approve failed";
     const failed = updateListing(id, { status: "failed", error: message });
