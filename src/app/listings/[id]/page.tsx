@@ -29,7 +29,7 @@ export default function ListingDetailPage() {
   const [vinted, setVinted] = useState<PlatformDraft>(emptyDraft());
   const [tab, setTab] = useState<"facebook" | "vinted">("facebook");
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState<"save" | "submit" | "approve" | null>(null);
+  const [busy, setBusy] = useState<"save" | "submit" | "approve" | "delete" | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -136,6 +136,28 @@ export default function ListingDetailPage() {
       setError(err instanceof Error ? err.message : "Publish failed");
       await load();
     } finally {
+      setBusy(null);
+    }
+  }
+
+
+  async function removeListing() {
+    const confirmed = window.confirm(
+      "Delete this listing from Listing Manager?\n\nThis only removes it here — it will NOT delete anything from Facebook Marketplace or Vinted."
+    );
+    if (!confirmed) return;
+
+    setBusy("delete");
+    setError(null);
+    setMessage(null);
+    try {
+      const res = await fetch(`/api/listings/${id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Delete failed");
+      router.push("/");
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Delete failed");
       setBusy(null);
     }
   }
@@ -291,6 +313,14 @@ export default function ListingDetailPage() {
 
       <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 backdrop-blur">
         <div className="mx-auto flex max-w-5xl flex-wrap gap-2 px-4 py-3">
+          <button
+            type="button"
+            disabled={!!busy}
+            onClick={removeListing}
+            className="rounded-xl border border-rose-200 bg-white px-4 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-60"
+          >
+            {busy === "delete" ? "Deleting…" : "Delete"}
+          </button>
           {(listing.status === "failed" || listing.status === "draft_pending") && (
             <button
               type="button"

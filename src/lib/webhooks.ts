@@ -59,24 +59,56 @@ export async function requestDraftFromN8n(listing: Listing): Promise<{
     return { ...drafts, error: null, demo: true };
   }
 
-  const form = new FormData();
-  form.append("listingId", listing.id);
-  form.append("notes", listing.notes || "");
-
   const uploads = getUploadsDir();
+  const photoBlobs: { name: string; blob: Blob }[] = [];
   for (const photo of listing.photos) {
     const filePath = path.join(uploads, path.basename(photo));
     if (!fs.existsSync(filePath)) continue;
-    const buf = fs.readFileSync(filePath);
-    const blob = new Blob([buf]);
-    form.append("photos", blob, path.basename(photo));
+    photoBlobs.push({ name: path.basename(photo), blob: new Blob([fs.readFileSync(filePath)]) });
   }
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: authHeaders(),
-    body: form,
-  });
+  function buildDraftForm() {
+    const form = new FormData();
+    form.append("listingId", listing.id);
+    form.append("notes", listing.notes || "");
+    for (const p of photoBlobs) form.append("photos", p.blob, p.name);
+    return form;
+  }
+
+  // Vision + Ollama can take a while; bound wait so UI never hangs forever.
+  const DRAFT_TIMEOUT_MS = Number(process.env.DRAFT_WEBHOOK_TIMEOUT_MS || 180_000);
+  let res: Response | null = null;
+  let lastErr: Error | null = null;
+  for (let attempt = 1; attempt <= 4; attempt++) {
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), DRAFT_TIMEOUT_MS);
+    try {
+      res = await fetch(url, {
+        method: "POST",
+        headers: authHeaders(),
+        body: buildDraftForm(),
+        signal: ac.signal,
+      });
+      if (res.status !== 429) break;
+      const waitMs = attempt * 5000;
+      console.warn(`Draft engine busy (429), retry ${attempt}/4 in ${waitMs}ms`);
+      await new Promise((r) => setTimeout(r, waitMs));
+      res = null;
+    } catch (err) {
+      lastErr = err instanceof Error ? err : new Error(String(err));
+      const aborted = lastErr.name === "AbortError";
+      throw new Error(
+        aborted
+          ? `Draft webhook timed out after ${DRAFT_TIMEOUT_MS}ms`
+          : lastErr.message
+      );
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  if (!res) {
+    throw lastErr || new Error("Draft webhook failed after retries");
+  }
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");

@@ -114,6 +114,27 @@ export function getUploadsDir() {
   return UPLOADS_DIR;
 }
 
+
+export function deleteListing(id: string): Listing | null {
+  const store = readStore();
+  const idx = store.listings.findIndex((l) => l.id === id);
+  if (idx === -1) return null;
+  const [removed] = store.listings.splice(idx, 1);
+  writeStore(store);
+
+  for (const filename of removed.photos) {
+    const safe = path.basename(filename);
+    const full = path.join(UPLOADS_DIR, safe);
+    try {
+      if (fs.existsSync(full)) fs.unlinkSync(full);
+    } catch {
+      // Best-effort photo cleanup; listing is already removed from store
+    }
+  }
+
+  return removed;
+}
+
 export function emptyDraft(): PlatformDraft {
   return {
     title: "",
